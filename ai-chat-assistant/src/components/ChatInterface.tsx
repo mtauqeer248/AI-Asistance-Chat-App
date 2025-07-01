@@ -13,14 +13,14 @@ interface ChatInterfaceProps {
   onCreateCard: (messageId: string) => void
   conversationTitle?: string
   hasActiveConversation?: boolean
+  onUpdateTitle?:(conversationId: string, userMessage: string) => void;
+  disabled?: boolean;
 }
 
 export function ChatInterface({ messages, onAddMessage, conversationTitle }: ChatInterfaceProps) {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [draggedMessage, setDraggedMessage] = useState<string | null>(null)
-  
-  // Text selection and explanation states
   const [showExplanation, setShowExplanation] = useState(false)
   const [selectedText, setSelectedText] = useState('')
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 })
@@ -41,18 +41,18 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
     if (!input.trim() || isLoading) return
 
     const userMessage = input.trim()
-    setInput('')
-    setIsLoading(true)
-
-    // Add user message
+    console.log(userMessage, 'msgg')
     onAddMessage({
       content: userMessage,
       role: 'user'
     })
+    setInput('')
+    setIsLoading(true)
 
-    // Simulate AI response (replace with actual API call)
+
     try {
       const response = await mockAIResponse(userMessage)
+      
       onAddMessage({
         content: response,
         role: 'assistant'
@@ -71,8 +71,6 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
     setDraggedMessage(messageId)
     e.dataTransfer.setData('text/plain', messageId)
     e.dataTransfer.effectAllowed = 'copy'
-    
-    // Add visual feedback
     const element = e.currentTarget as HTMLElement
     element.style.opacity = '0.5'
   }
@@ -83,7 +81,6 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
     element.style.opacity = '1'
   }
 
-  // Handle text selection for explanations
   const handleTextSelect = (text: string, position: { x: number; y: number }) => {
     setSelectedText(text)
     setSelectionPosition(position)
@@ -108,7 +105,6 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
           </p>
         </div>
 
-        {/* Fixed height scrollable container */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-card">
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
@@ -149,7 +145,6 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
                     </div>
                   )}
                   
-                  {/* Wrap message content with SelectableText for AI messages */}
                   {message.role === 'assistant' ? (
                     <SelectableText
                       onTextSelect={handleTextSelect}
@@ -219,7 +214,6 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
         </form>
       </div>
 
-      {/* Explanation Popup */}
       <ExplanationPopup
         isOpen={showExplanation}
         onClose={closeExplanation}
@@ -230,9 +224,8 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
   )
 }
 
-// Mock AI response function - replace with actual API call
 async function mockAIResponse(input: string): Promise<string> {
-  const delay = 1000 + Math.random() * 2000 // 1-3 seconds
+  const delay = 1000 + Math.random() * 2000
   await new Promise(resolve => setTimeout(resolve, delay))
 
   const responses = [

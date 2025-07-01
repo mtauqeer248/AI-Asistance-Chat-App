@@ -18,45 +18,42 @@ export function ContentCards({ cards, onDeleteCard, onReorderCards, onCreateCard
   const [isDropZoneActive, setIsDropZoneActive] = useState(false)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
- const handleCardDragOverInternal = (e: React.DragEvent, cardId: string) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent bubbling to external drop zone
-    const cardData = e.dataTransfer.types.includes('application/card-reorder');
-    
-    if (cardData) {
-      e.dataTransfer.dropEffect = 'move';
-      setDraggedOverCard(cardId);
-    }
-  }
-  // Handle external drops (from chat messages)
   const handleExternalDragOver = (e: React.DragEvent) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-    setIsDropZoneActive(true)
+    // Only handle external drops (message drops), not card reordering
+    if (!e.dataTransfer.types.includes('application/card-reorder')) {
+      e.dataTransfer.dropEffect = 'copy'
+      setIsDropZoneActive(true)
+    }
   }
 
   const handleExternalDragLeave = (e: React.DragEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const x = e.clientX
-    const y = e.clientY
-    
-    // Only hide drop zone if mouse is actually outside the element
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      setIsDropZoneActive(false)
+    // Only handle external drag leave if it's not a card reorder operation
+    if (!e.dataTransfer.types.includes('application/card-reorder')) {
+      const rect = e.currentTarget.getBoundingClientRect()
+      const x = e.clientX
+      const y = e.clientY
+      
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+        setIsDropZoneActive(false)
+      }
     }
   }
 
   const handleExternalDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    setIsDropZoneActive(false)
     
-    const messageId = e.dataTransfer.getData('text/plain')
-    if (messageId && onCreateCardFromDrop) {
-      onCreateCardFromDrop(messageId)
+    // Only handle external drops (message drops), not card reordering
+    if (!e.dataTransfer.types.includes('application/card-reorder')) {
+      setIsDropZoneActive(false)
+      
+      const messageId = e.dataTransfer.getData('text/plain')
+      if (messageId && onCreateCardFromDrop) {
+        onCreateCardFromDrop(messageId)
+      }
     }
   }
 
-  // Handle card reordering
   const handleCardDragStart = (e: React.DragEvent, cardId: string) => {
     setDraggedCard(cardId)
     e.dataTransfer.setData('application/card-reorder', cardId)
@@ -75,32 +72,50 @@ export function ContentCards({ cards, onDeleteCard, onReorderCards, onCreateCard
 
   const handleCardDragOver = (e: React.DragEvent, cardId: string) => {
     e.preventDefault()
-    const cardData = e.dataTransfer.types.includes('application/card-reorder')
+    e.stopPropagation() // Prevent bubbling to parent drop zone
     
-    if (cardData) {
+    const isCardReorder = e.dataTransfer.types.includes('application/card-reorder')
+    
+    if (isCardReorder) {
       e.dataTransfer.dropEffect = 'move'
       setDraggedOverCard(cardId)
+      // Reset external drop zone state when dragging cards internally
+      setIsDropZoneActive(false)
+    }
+  }
+
+  const handleCardDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Only reset if we're actually leaving the card area
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX
+    const y = e.clientY
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDraggedOverCard(null)
     }
   }
 
   const handleCardDrop = (e: React.DragEvent, targetCardId: string) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent bubbling to external drop zone
-    setDraggedOverCard(null);
-    
-    const draggedCardId = e.dataTransfer.getData('application/card-reorder');
-    if (!draggedCardId || draggedCardId === targetCardId) return;
+    e.preventDefault()
+    e.stopPropagation()
+    setDraggedOverCard(null)
 
-    const draggedIndex = cards.findIndex(card => card.id === draggedCardId);
-    const targetIndex = cards.findIndex(card => card.id === targetCardId);
-    
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    const draggedCardId = e.dataTransfer.getData('application/card-reorder')
+    if (!draggedCardId || draggedCardId === targetCardId) return
 
-    const newCards = [...cards];
-    const [draggedCard] = newCards.splice(draggedIndex, 1);
-    newCards.splice(targetIndex, 0, draggedCard);
-    
-    onReorderCards(newCards);
+    const draggedIndex = cards.findIndex(card => card.id === draggedCardId)
+    const targetIndex = cards.findIndex(card => card.id === targetCardId)
+
+    if (draggedIndex === -1 || targetIndex === -1) return
+
+    const newCards = [...cards]
+    const [draggedCard] = newCards.splice(draggedIndex, 1)
+    newCards.splice(targetIndex, 0, draggedCard)
+
+    onReorderCards(newCards)
   }
 
   return (
@@ -166,6 +181,7 @@ export function ContentCards({ cards, onDeleteCard, onReorderCards, onCreateCard
               onDragStart={(e) => handleCardDragStart(e, card.id)}
               onDragEnd={handleCardDragEnd}
               onDragOver={(e) => handleCardDragOver(e, card.id)}
+              onDragLeave={handleCardDragLeave}
               onDrop={(e) => handleCardDrop(e, card.id)}
             >
               <div className="flex items-start gap-3">

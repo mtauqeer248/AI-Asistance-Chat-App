@@ -1,5 +1,4 @@
 'use client'
-
 import { useState } from 'react'
 import { 
   MessageSquare, 
@@ -83,6 +82,7 @@ export function ConversationSidebar({
               type="text"
               placeholder="Search conversations..."
               value={searchQuery}
+            
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-3 py-2 border border-input rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring text-sm"
             />

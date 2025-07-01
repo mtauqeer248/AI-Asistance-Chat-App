@@ -1,10 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { ChatInterface } from "@/components/ChatInterface";
 import { ContentCards } from "@/components/ContentCards";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 import { useEffect, useState } from "react";
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 export interface Message {
   id: string;
@@ -35,126 +37,96 @@ export default function Home() {
   >(null);
   const [cards, setCards] = useState<ContentCard[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [tempConversation, setTempConversation] = useState<{
+    id: string;
+    messages: Message[];
+  } | null>(null);
 
-  // Get current conversation
   const currentConversation = conversations.find(
     (c) => c.id === currentConversationId
   );
-  const messages = currentConversation?.messages || [];
+  const messages =
+    tempConversation && tempConversation.id === currentConversationId
+      ? tempConversation.messages
+      : currentConversation?.messages || [];
 
-  // Load data from localStorage on mount
   useEffect(() => {
-    const savedConversations = localStorage.getItem(
-      "ai-assistant-conversations"
-    );
-    const savedCurrentId = localStorage.getItem(
-      "ai-assistant-current-conversation"
-    );
-    const savedCards = localStorage.getItem("ai-assistant-cards");
-    const savedSidebar = localStorage.getItem("ai-assistant-sidebar");
-
-    if (savedConversations) {
-      const parsedConversations = JSON.parse(savedConversations).map(
-        (conv: any) => ({
-          ...conv,
-          createdAt: new Date(conv.createdAt),
-          updatedAt: new Date(conv.updatedAt),
-          messages: conv.messages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp),
-          })),
-        })
-      );
-      setConversations(parsedConversations);
-
-      if (
-        savedCurrentId &&
-        parsedConversations.some((c: Conversation) => c.id === savedCurrentId)
-      ) {
-        setCurrentConversationId(savedCurrentId);
-      } else if (parsedConversations.length > 0) {
-        setCurrentConversationId(parsedConversations[0].id);
-      }
-    }
-
-    if (savedCards) {
-      const parsedCards = JSON.parse(savedCards).map((card: any) => ({
-        ...card,
-        createdAt: new Date(card.createdAt),
-      }));
-      setCards(parsedCards);
-    }
-
-    if (savedSidebar === "false") {
-      setSidebarOpen(false);
-    }
+    setIsInitialized(true);
   }, []);
 
-  // Persist conversations to localStorage
-  useEffect(() => {
-    localStorage.setItem(
-      "ai-assistant-conversations",
-      JSON.stringify(conversations)
-    );
-  }, [conversations]);
-
-  // Persist current conversation ID
-  useEffect(() => {
-    if (currentConversationId) {
-      localStorage.setItem(
-        "ai-assistant-current-conversation",
-        currentConversationId
-      );
-    }
-  }, [currentConversationId]);
-
-  // Persist cards to localStorage
-  useEffect(() => {
-    localStorage.setItem("ai-assistant-cards", JSON.stringify(cards));
-  }, [cards]);
-
-  // Persist sidebar state
-  useEffect(() => {
-    localStorage.setItem("ai-assistant-sidebar", sidebarOpen.toString());
-  }, [sidebarOpen]);
-
- const addMessage = (message: Omit<Message, "id" | "timestamp">) => {
-  const newMessage: Message = {
-    ...message,
-    id: crypto.randomUUID(),
-    timestamp: new Date(),
-  };
-
-  if (!currentConversationId) {
-    // Create new conversation but DON'T add message yet
-    const newConversation: Conversation = {
+  const addMessage = (
+    message: Omit<Message, "id" | "timestamp">,
+    targetConversationId?: string
+  ) => {
+    const newMessage: Message = {
+      ...message,
       id: crypto.randomUUID(),
-      title: "New Conversation", // Temporary title
-      messages: [], // Start with empty messages
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      timestamp: new Date(),
     };
 
-    setConversations((prev) => [newConversation, ...prev]);
-    setCurrentConversationId(newConversation.id);
-    
-    // Now add the message to the new conversation
-    setConversations((prev) =>
-      prev.map((conv) =>
-        conv.id === newConversation.id
-          ? {
-              ...conv,
-              messages: [newMessage], // Add first message
-              title: generateConversationTitle(newMessage.content),
-            }
-          : conv
-      )
-    );
-  } else {
+    let conversationIdToUse = targetConversationId || currentConversationId;
+
+    if (!conversationIdToUse) {
+      const newConversationId = crypto.randomUUID();
+      conversationIdToUse = newConversationId;
+      setCurrentConversationId(newConversationId);
+
+      if (message.role === "user") {
+        setTempConversation({
+          id: newConversationId,
+          messages: [newMessage],
+        });
+      } else {
+        const newConversation: Conversation = {
+          id: newConversationId,
+          title: "New Conversation",
+          messages: [newMessage],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        setConversations((prev) => [newConversation, ...prev]);
+      }
+
+      return { messageId: newMessage.id, conversationId: conversationIdToUse };
+    }
+
+    if (tempConversation && conversationIdToUse === tempConversation.id) {
+      const updatedMessages = [...tempConversation.messages, newMessage];
+
+      if (message.role === "assistant") {
+        // Find the first user message to generate title from
+        const firstUserMessage = updatedMessages.find(m => m.role === "user");
+        const titleContent = firstUserMessage ? firstUserMessage.content : "New Conversation";
+        
+        const newConversation: Conversation = {
+          id: tempConversation.id,
+          title: generateConversationTitle(titleContent),
+          messages: updatedMessages,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        setConversations((prev) => [newConversation, ...prev]);
+        setTempConversation(null);
+      } else {
+        setTempConversation((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: updatedMessages,
+              }
+            : null
+        );
+      }
+
+      return { messageId: newMessage.id, conversationId: conversationIdToUse };
+    }
+
     // Add to existing conversation
     setConversations((prev) =>
       prev.map((conv) =>
-        conv.id === currentConversationId
+        conv.id === conversationIdToUse
           ? {
               ...conv,
               messages: [...conv.messages, newMessage],
@@ -163,15 +135,40 @@ export default function Home() {
           : conv
       )
     );
-  }
-};
+
+    // Update title for existing conversations if it's still the default
+    if (message.role === "assistant") {
+      const conversation = conversations.find(c => c.id === conversationIdToUse);
+      if (conversation && conversation.title === "New Conversation") {
+        const firstUserMessage = conversation.messages.find(m => m.role === "user");
+        if (firstUserMessage) {
+          updateConversationTitle(conversationIdToUse, firstUserMessage.content);
+        }
+      }
+    }
+
+    return { messageId: newMessage.id, conversationId: conversationIdToUse };
+  };
+
+  const updateConversationTitle = (
+    conversationId: string,
+    userMessage: string
+  ) => {
+    setTimeout(() => {
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === conversationId && conv.title === "New Conversation"
+            ? { ...conv, title: generateConversationTitle(userMessage) }
+            : conv
+        )
+      );
+    }, 100); // Reduced timeout for faster title update
+  };
+
   const createNewConversation = (initialMessages: Message[] = []) => {
     const newConversation: Conversation = {
       id: crypto.randomUUID(),
-      title:
-        initialMessages.length > 0
-          ? generateConversationTitle(initialMessages[0].content)
-          : "New Conversation",
+      title: "New Conversation",
       messages: initialMessages,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -179,37 +176,49 @@ export default function Home() {
 
     setConversations((prev) => [newConversation, ...prev]);
     setCurrentConversationId(newConversation.id);
+    setTempConversation(null);
   };
 
   const generateConversationTitle = (content: string): string => {
-  // Use first 6 words or 30 characters
-  const cleanContent = content.replace(/[\r\n]/g, ' ');
-  return cleanContent.length > 30 
-    ? cleanContent.substring(0, 30) + "..." 
-    : cleanContent;
-};
+    const cleanContent = content.replace(/[\r\n\t]/g, " ").trim();
+    if (!cleanContent) return "New Conversation";
+
+    const words = cleanContent.split(" ").filter((word) => word.length > 0);
+    let title = words.slice(0, 6).join(" ");
+
+    if (title.length > 40) {
+      title = cleanContent.substring(0, 40);
+    }
+
+    return title.length < cleanContent.length ? title + "..." : title;
+  };
 
   const deleteConversation = (conversationId: string) => {
-    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setConversations((prev) => {
+      const newConversations = prev.filter((c) => c.id !== conversationId);
 
-    if (currentConversationId === conversationId) {
-      const remaining = conversations.filter((c) => c.id !== conversationId);
-      setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
-    }
+      if (currentConversationId === conversationId) {
+        setCurrentConversationId(
+          newConversations.length > 0 ? newConversations[0].id : null
+        );
+        setTempConversation(null);
+      }
+
+      return newConversations;
+    });
   };
 
   const selectConversation = (conversationId: string) => {
     setCurrentConversationId(conversationId);
+    setTempConversation(null);
   };
 
   const createCard = (messageId: string) => {
-    // Find the message in the current conversation
     const message = messages.find((m) => m.id === messageId);
     if (!message || message.role !== "assistant") return;
 
-    // Check if card already exists for this message
     const existingCard = cards.find((card) => card.content === message.content);
-    if (existingCard) return; // Don't create duplicate cards
+    if (existingCard) return;
 
     const newCard: ContentCard = {
       id: crypto.randomUUID(),
@@ -220,7 +229,7 @@ export default function Home() {
       createdAt: new Date(),
     };
 
-    setCards((prev) => [newCard, ...prev]); // Add to beginning for most recent first
+    setCards((prev) => [newCard, ...prev]);
   };
 
   const deleteCard = (cardId: string) => {
@@ -232,53 +241,56 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
-      {/* Conversation Sidebar */}
-      <ConversationSidebar
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
-        onSelectConversation={selectConversation}
-        onNewConversation={() => createNewConversation()}
-        onDeleteConversation={deleteConversation}
-      />
+    <DndProvider backend={HTML5Backend}>
+      <div className="min-h-screen bg-background text-foreground flex">
+        <ConversationSidebar
+          conversations={conversations}
+          currentConversationId={currentConversationId}
+          isOpen={sidebarOpen}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+          onSelectConversation={selectConversation}
+          onNewConversation={() => createNewConversation()}
+          onDeleteConversation={deleteConversation}
+        />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <header className="border-b border-border p-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-primary">
-              AI Content Assistant
-            </h1>
-          </div>
-        </header>
-
-        <main className="flex-1 p-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)]">
-            <div className="flex flex-col">
-              <ChatInterface
-                messages={messages}
-                onAddMessage={addMessage}
-                onCreateCard={createCard}
-                conversationTitle={
-                  currentConversation?.title || "New Conversation"
-                }
-                hasActiveConversation={!!currentConversationId}
-              />
+        <div className="flex-1 flex flex-col">
+          <header className="border-b border-border p-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-primary">
+                AI Content Assistant
+              </h1>
             </div>
+          </header>
 
-            <div className="h-[calc(110vh-200px)] flex flex-col">
-              <ContentCards
-                cards={cards}
-                onDeleteCard={deleteCard}
-                onReorderCards={reorderCards}
-                onCreateCardFromDrop={createCard}
-              />
+          <main className="flex-1 p-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)]">
+              <div className="flex flex-col">
+                <ChatInterface
+                  messages={messages}
+                  onAddMessage={addMessage}
+                  onCreateCard={createCard}
+                  onUpdateTitle={updateConversationTitle}
+                  conversationTitle={
+                    currentConversation?.title ||
+                    (tempConversation ? "New Conversation" : "New Conversation")
+                  }
+                  hasActiveConversation={!!currentConversationId}
+                  disabled={!currentConversationId}
+                />
+              </div>
+
+              <div className="h-[calc(110vh-200px)] flex flex-col">
+                <ContentCards
+                  cards={cards}
+                  onDeleteCard={deleteCard}
+                  onReorderCards={reorderCards}
+                  onCreateCardFromDrop={createCard}
+                />
+              </div>
             </div>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+    </DndProvider>
   );
 }
