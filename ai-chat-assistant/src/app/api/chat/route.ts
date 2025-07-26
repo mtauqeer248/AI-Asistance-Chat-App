@@ -6,7 +6,7 @@ import Groq from 'groq-sdk'
 import type { ChatCompletion } from 'groq-sdk/resources/chat/completions'
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_KEY || '',
 })
 
 const SYSTEM_PROMPT = `You are an expert Software Engineer AI Assistant specialized in helping developers with their daily coding tasks. Your expertise includes:
@@ -87,6 +87,17 @@ function processResponse(content: string, isCodeQuery: boolean): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if API key is available
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json(
+        { 
+          error: 'GROQ_API_KEY environment variable is not configured',
+          type: 'config_error'
+        },
+        { status: 500 }
+      )
+    }
+
     const { messages } = await request.json()
 
     if (!messages || !Array.isArray(messages)) {
@@ -205,6 +216,19 @@ export async function POST(request: NextRequest) {
 // Enhanced health check with system status
 export async function GET() {
   try {
+    // Check if API key is available first
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json(
+        { 
+          status: 'Chat API configuration error',
+          error: 'GROQ_API_KEY environment variable is not configured',
+          timestamp: new Date().toISOString(),
+          connection: 'unhealthy'
+        },
+        { status: 503 }
+      )
+    }
+
     // Test API connectivity with explicit non-streaming parameters
     const testCompletion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: 'test' }],
