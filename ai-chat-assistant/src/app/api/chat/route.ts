@@ -3,6 +3,7 @@
 // app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
+import type { ChatCompletion } from 'groq-sdk/resources/chat/completions'
 
 const groq = new Groq({
   apiKey: process.env.NEXT_PUBLIC_OPEN_API_PROJECTS,
@@ -114,37 +115,46 @@ export async function POST(request: NextRequest) {
     // Adjust parameters based on query type
     const chatParams = {
       messages: apiMessages,
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.3-70b-versatile" as const,
       temperature: isCodeQuery ? 0.3 : 0.7, // Lower temperature for code-related queries
       max_tokens: isCodeQuery ? 2048 : 1024, // More tokens for code examples
       top_p: 0.95,
-      stream: false,
+      stream: false as const, // Explicitly set as const to ensure TypeScript knows this is false
       // Add stop sequences to prevent overly long responses
       stop: ["<|end_of_turn|>", "<|end|>"]
     }
 
     const chatCompletion = await groq.chat.completions.create(chatParams)
     
-    let content = chatCompletion.choices[0]?.message?.content || ''
-    
-    // Process the response for better developer experience
-    content = processResponse(content, isCodeQuery)
+    // Type guard to ensure we have a ChatCompletion and not a Stream
+    if ('choices' in chatCompletion && chatCompletion.choices) {
+      let content = chatCompletion.choices[0]?.message?.content || ''
+      
+      // Process the response for better developer experience
+      content = processResponse(content, isCodeQuery)
 
-    // Add usage statistics for monitoring
-    const usage = chatCompletion.usage
+      // Add usage statistics for monitoring
+      const usage = chatCompletion.usage
 
-    return NextResponse.json({ 
-      content,
-      metadata: {
-        model: chatParams.model,
-        isCodeQuery,
-        tokens: usage ? {
-          prompt: usage.prompt_tokens,
-          completion: usage.completion_tokens,
-          total: usage.total_tokens
-        } : null
-      }
-    })
+      return NextResponse.json({ 
+        content,
+        metadata: {
+          model: chatParams.model,
+          isCodeQuery,
+          tokens: usage ? {
+            prompt: usage.prompt_tokens,
+            completion: usage.completion_tokens,
+            total: usage.total_tokens
+          } : null
+        }
+      })
+    } else {
+      // Fallback if for some reason we don't get the expected response structure
+      return NextResponse.json({
+        error: 'Unexpected response format from API',
+        type: 'api_error'
+      }, { status: 500 })
+    }
 
   } catch (error) {
     console.error('Error calling Groq API:', error)
@@ -195,20 +205,34 @@ export async function POST(request: NextRequest) {
 // Enhanced health check with system status
 export async function GET() {
   try {
-    // Test API connectivity
+    // Test API connectivity with explicit non-streaming parameters
     const testCompletion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: 'test' }],
       model: "llama-3.3-70b-versatile",
       max_tokens: 10,
-      temperature: 0.1
+      temperature: 0.1,
+      stream: false as const // Explicitly set stream to false
     })
 
-    return NextResponse.json({ 
-      status: 'Chat API is running',
-      model: 'llama-3.3-70b-versatile',
-      timestamp: new Date().toISOString(),
-      connection: 'healthy'
-    })
+    // Type guard for the test completion as well
+    if ('choices' in testCompletion && testCompletion.choices) {
+      return NextResponse.json({ 
+        status: 'Chat API is running',
+        model: 'llama-3.3-70b-versatile',
+        timestamp: new Date().toISOString(),
+        connection: 'healthy'
+      })
+    } else {
+      return NextResponse.json(
+        { 
+          status: 'Chat API has issues',
+          error: 'Unexpected response format',
+          timestamp: new Date().toISOString(),
+          connection: 'unhealthy'
+        },
+        { status: 503 }
+      )
+    }
   } catch (error) {
     return NextResponse.json(
       { 
