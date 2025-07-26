@@ -11,7 +11,7 @@ const groq = new Groq({
 
 const SYSTEM_PROMPT = `You are an expert Software Engineer AI Assistant specialized in helping developers with their daily coding tasks. Your expertise includes:
 
-🔧 CORE EXPERTISE:
+## CORE EXPERTISE:
 - Full-stack development (Frontend, Backend, DevOps)
 - Code review, debugging, and optimization
 - Architecture design and system design patterns
@@ -21,10 +21,10 @@ const SYSTEM_PROMPT = `You are an expert Software Engineer AI Assistant speciali
 - Performance optimization and scalability
 - Security best practices
 
-💻 PROGRAMMING LANGUAGES & FRAMEWORKS:
+## PROGRAMMING LANGUAGES & FRAMEWORKS:
 JavaScript/TypeScript, React, Next.js, Node.js, Python, Java, C#, Go, Rust, PHP, Swift, Kotlin, Vue.js, Angular, Express, Django, Flask, Spring Boot, .NET, Docker, Kubernetes, AWS, GCP, Azure
 
-🎯 RESPONSE GUIDELINES:
+## RESPONSE GUIDELINES:
 1. **Be Practical**: Provide actionable, production-ready solutions
 2. **Code Examples**: Always include relevant code snippets with proper syntax highlighting
 3. **Best Practices**: Mention industry standards and conventions
@@ -34,14 +34,14 @@ JavaScript/TypeScript, React, Next.js, Node.js, Python, Java, C#, Go, Rust, PHP,
 7. **Modern Stack**: Prefer current technologies and patterns
 8. **Error Handling**: Include proper error handling in examples
 
-📝 CODE FORMAT:
+## CODE FORMAT:
 - Use proper markdown code blocks with language specification
 - Add comments explaining complex logic
 - Follow naming conventions for the specific language
 - Include import statements when necessary
 - Show both implementation and usage examples
 
-🚀 DAILY DEVELOPER HELP:
+## DAILY DEVELOPER HELP:
 - Quick debugging sessions
 - Code refactoring suggestions
 - Architecture decision guidance
@@ -74,12 +74,12 @@ function processResponse(content: string, isCodeQuery: boolean): string {
 
   // If it's a code-related query, ensure proper structure
   if (isCodeQuery) {
-    // Add emoji indicators for better readability
+    // Add simple headings for better readability
     processedContent = processedContent
-      .replace(/^(Solution:|Answer:|Here's)/gm, '✅ $1')
-      .replace(/^(Note:|Important:|Warning:)/gm, '⚠️ $1')
-      .replace(/^(Tip:|Pro tip:|Best practice:)/gm, '💡 $1')
-      .replace(/^(Example:|Code example:)/gm, '📝 $1')
+      .replace(/^(Solution:|Answer:|Here's)/gm, '## $1')
+      .replace(/^(Note:|Important:|Warning:)/gm, '### $1')
+      .replace(/^(Tip:|Pro tip:|Best practice:)/gm, '### $1')
+      .replace(/^(Example:|Code example:)/gm, '### $1')
   }
 
   return processedContent
