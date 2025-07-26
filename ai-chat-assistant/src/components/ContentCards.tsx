@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Trash2, GripVertical, FileText, Plus } from 'lucide-react'
+import { Trash2, GripVertical, FileText, Plus, Minus } from 'lucide-react'
 import { ContentCard } from '@/app/page'
 
 interface ContentCardsProps {
@@ -16,6 +16,7 @@ export function ContentCards({ cards, onDeleteCard, onReorderCards, onCreateCard
   const [draggedCard, setDraggedCard] = useState<string | null>(null)
   const [draggedOverCard, setDraggedOverCard] = useState<string | null>(null)
   const [isDropZoneActive, setIsDropZoneActive] = useState(false)
+  const [collapsedCards, setCollapsedCards] = useState<Set<string>>(new Set())
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
   const handleExternalDragOver = (e: React.DragEvent) => {
@@ -118,6 +119,25 @@ export function ContentCards({ cards, onDeleteCard, onReorderCards, onCreateCard
     onReorderCards(newCards)
   }
 
+  const toggleCardCollapse = (cardId: string) => {
+    setCollapsedCards(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(cardId)) {
+        newSet.delete(cardId)
+      } else {
+        newSet.add(cardId)
+      }
+      return newSet
+    })
+  }
+
+  const isCardCollapsed = (cardId: string) => collapsedCards.has(cardId)
+
+  const getPreviewText = (content: string, maxLength: number = 200) => {
+    if (content.length <= maxLength) return content
+    return content.substring(0, maxLength) + '...'
+  }
+
   return (
     <div className="flex flex-col h-full bg-card rounded-lg border border-border shadow-sm">
       <div className="p-4 border-b border-border">
@@ -169,57 +189,85 @@ export function ContentCards({ cards, onDeleteCard, onReorderCards, onCreateCard
         )}
 
         <div className="space-y-3">
-          {cards.map((card) => (
-            <div
-              key={card.id}
-              className={`group relative bg-background border border-border rounded-lg p-4 cursor-grab active:cursor-grabbing transition-all duration-200 hover:shadow-md hover:border-primary/30 ${
-                draggedOverCard === card.id ? 'border-primary border-2' : ''
-              } ${
-                draggedCard === card.id ? 'rotate-2 scale-105' : ''
-              }`}
-              draggable
-              onDragStart={(e) => handleCardDragStart(e, card.id)}
-              onDragEnd={handleCardDragEnd}
-              onDragOver={(e) => handleCardDragOver(e, card.id)}
-              onDragLeave={handleCardDragLeave}
-              onDrop={(e) => handleCardDrop(e, card.id)}
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-50 transition-opacity">
-                  <GripVertical className="h-4 w-4 text-muted-foreground" />
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-foreground mb-2 line-clamp-2">
-                    {card.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-4">
-                    {card.content}
-                  </p>
-                  <div className="text-xs text-muted-foreground mt-3 flex items-center justify-between">
-                    <span>
-                      {card.createdAt.toLocaleDateString()} at{' '}
-                      {card.createdAt.toLocaleTimeString([], { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
-                    </span>
-                    <span className="text-xs bg-muted px-2 py-1 rounded">
-                      {card.content.length} chars
-                    </span>
+          {cards.map((card) => {
+            const collapsed = isCardCollapsed(card.id)
+            const displayContent = collapsed ? getPreviewText(card.content) : card.content
+            
+            return (
+              <div
+                key={card.id}
+                className={`group relative bg-background border border-border rounded-lg p-4 cursor-grab active:cursor-grabbing transition-all duration-200 hover:shadow-md hover:border-primary/30 ${
+                  draggedOverCard === card.id ? 'border-primary border-2' : ''
+                } ${
+                  draggedCard === card.id ? 'rotate-2 scale-105' : ''
+                }`}
+                draggable
+                onDragStart={(e) => handleCardDragStart(e, card.id)}
+                onDragEnd={handleCardDragEnd}
+                onDragOver={(e) => handleCardDragOver(e, card.id)}
+                onDragLeave={handleCardDragLeave}
+                onDrop={(e) => handleCardDrop(e, card.id)}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-50 transition-opacity">
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
                   </div>
-                </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="font-medium text-foreground line-clamp-2 flex-1">
+                        {card.title}
+                      </h3>
+                      {card.content.length > 200 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleCardCollapse(card.id)
+                          }}
+                          className="flex-shrink-0 p-1 hover:bg-muted rounded transition-colors"
+                          title={collapsed ? 'Expand content' : 'Collapse content'}
+                        >
+                          {collapsed ? (
+                            <Plus className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <Minus className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+                      {displayContent}
+                    </div>
+                    
+                    <div className="text-xs text-muted-foreground mt-3 flex items-center justify-between">
+                      <span>
+                        {card.createdAt.toLocaleDateString()} at{' '}
+                        {card.createdAt.toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </span>
+                      <span className="text-xs bg-muted px-2 py-1 rounded">
+                        {card.content.length} chars
+                      </span>
+                    </div>
+                  </div>
 
-                <button
-                  onClick={() => onDeleteCard(card.id)}
-                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 hover:text-destructive rounded"
-                  title="Delete card"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onDeleteCard(card.id)
+                    }}
+                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-destructive/10 hover:text-destructive rounded"
+                    title="Delete card"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>

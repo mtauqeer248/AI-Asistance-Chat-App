@@ -49,15 +49,15 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
     setInput('')
     setIsLoading(true)
 
-
     try {
-      const response = await mockAIResponse(userMessage)
+      const response = await getGroqResponse(userMessage, messages)
       
       onAddMessage({
         content: response,
         role: 'assistant'
       })
     } catch (error) {
+      console.error('Error getting AI response:', error)
       onAddMessage({
         content: 'Sorry, I encountered an error. Please try again.',
         role: 'assistant'
@@ -224,18 +224,39 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
   )
 }
 
-async function mockAIResponse(input: string): Promise<string> {
-  const delay = 1000 + Math.random() * 2000
-  await new Promise(resolve => setTimeout(resolve, delay))
+// Function to get response from Groq API
+async function getGroqResponse(userMessage: string, conversationHistory: Message[]): Promise<string> {
+  try {
+    // Build conversation context from message history
+    const messages = conversationHistory
+      .slice(-10) // Keep last 10 messages for context (adjust as needed)
+      .map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }))
 
-  const responses = [
-    `I understand you're asking about "${input}". Here's my thoughtful response that addresses your question with detailed information and helpful insights. Machine learning algorithms use statistical methods to identify patterns in data and make predictions about future outcomes.`,
-    `That's an interesting question about "${input}". Let me break this down for you with some key points and actionable advice. Natural language processing involves computational linguistics and artificial intelligence to help computers understand human language.`,
-    `Great question! Regarding "${input}", I can provide you with some comprehensive information that should help clarify things. Neural networks are computing systems inspired by biological neural networks that constitute animal brains.`,
-    `I'd be happy to help with "${input}". Here's what I think would be most useful for your situation. Deep learning is a subset of machine learning that uses artificial neural networks with multiple layers to model and understand complex patterns.`,
-    `Thanks for asking about "${input}". This is a topic I can definitely help you with. Let me share some insights about algorithms, data structures, and computational complexity in computer science.`
-  ]
+    // Add the current user message
+    messages.push({
+      role: 'user',
+      content: userMessage
+    })
 
-  return responses[Math.floor(Math.random() * responses.length)] + 
-    ` This response contains more detailed information that demonstrates how the AI can provide comprehensive answers. You can drag this message to the content cards area to save it for later reference. The drag-and-drop functionality will let you organize your saved content as needed. Try selecting any technical terms in this message to get instant explanations!`
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return data.content || 'Sorry, I received an empty response.'
+  } catch (error) {
+    console.error('Error calling Groq API:', error)
+    throw error
+  }
 }
