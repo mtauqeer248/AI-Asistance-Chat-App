@@ -6,7 +6,7 @@ import Groq from 'groq-sdk'
 import type { ChatCompletion } from 'groq-sdk/resources/chat/completions'
 
 const groq = new Groq({
-  apiKey: process.env.NEXT_PUBLIC_OPEN_API_PROJECTS,
+  apiKey: process.env.GROQ_API_KEY,
 })
 
 const SYSTEM_PROMPT = `You are an expert Software Engineer AI Assistant specialized in helping developers with their daily coding tasks. Your expertise includes:
