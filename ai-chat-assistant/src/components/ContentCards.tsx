@@ -21,7 +21,7 @@ const parseConversationContent = (content: string) => {
   const lines = content.split('\n').filter(line => line.trim())
   const messages: Array<{ role: 'user' | 'assistant', content: string }> = []
   
-  let currentMessage = { role: 'assistant' as const, content: '' }
+   let currentMessage: { role: 'user' | 'assistant', content: string } = { role: 'assistant', content: '' }
   
   for (const line of lines) {
     // Check for user indicators
@@ -52,7 +52,7 @@ const parseConversationContent = (content: string) => {
     messages.push(currentMessage)
   }
   
- 
+  // If no conversation pattern detected, treat as single assistant message
   if (messages.length === 0) {
     return [{ role: 'assistant' as const, content }]
   }
