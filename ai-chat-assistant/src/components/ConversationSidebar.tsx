@@ -43,6 +43,23 @@ export function ConversationSidebar({
     )
   )
 
+  // Helper function to generate title from first user message
+  const getDisplayTitle = (conversation: Conversation) => {
+    if (conversation.title && conversation.title.trim() !== '') {
+      return conversation.title
+    }
+    
+    // If no title, use first user message as title
+    const firstUserMessage = conversation.messages.find(msg => msg.role === 'user')
+    if (firstUserMessage) {
+      return firstUserMessage.content.length > 50 
+        ? firstUserMessage.content.substring(0, 50) + '...'
+        : firstUserMessage.content
+    }
+    
+    return 'New Conversation'
+  }
+
   const formatRelativeTime = (date: Date) => {
     const now = new Date()
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
@@ -124,7 +141,7 @@ export function ConversationSidebar({
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium truncate text-sm ${
+                      <div className={`font-medium truncate text-sm prose prose-sm max-w-none dark:prose-invert ${
                         currentConversationId === conversation.id
                           ? 'text-primary'
                           : 'text-card-foreground'
@@ -132,7 +149,6 @@ export function ConversationSidebar({
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeHighlight]}
-                          
                           components={{
                             p: ({ children }) => <span>{children}</span>,
                             h1: ({ children }) => <span className="text-sm font-bold">{children}</span>,
@@ -155,7 +171,7 @@ export function ConversationSidebar({
                             blockquote: ({ children }) => <span className="italic opacity-80">{children}</span>,
                           }}
                         >
-                          {conversation.title}
+                          {getDisplayTitle(conversation)}
                         </ReactMarkdown>
                       </div>
                       
