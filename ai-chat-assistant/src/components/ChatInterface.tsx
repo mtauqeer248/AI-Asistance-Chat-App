@@ -6,6 +6,11 @@ import { Send, Bot, User, Loader2, GripVertical } from 'lucide-react'
 import { Message } from '@/app/page'
 import { ExplanationPopup } from '@/components/explanation-popup'
 import { SelectableText } from '@/components/selectable-text'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
+import 'highlight.js/styles/github-dark.css'
+
 
 interface ChatInterfaceProps {
   messages: Message[]
@@ -145,16 +150,22 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
                     </div>
                   )}
                   
-                  {message.role === 'assistant' ? (
-                    <SelectableText
-                      onTextSelect={handleTextSelect}
-                      className="whitespace-pre-wrap break-words pr-6"
-                    >
-                      {message.content}
-                    </SelectableText>
-                  ) : (
-                    <p className="whitespace-pre-wrap break-words pr-6">{message.content}</p>
-                  )}
+                 {message.role === 'assistant' ? (
+  <SelectableText
+    onTextSelect={handleTextSelect}
+    className="whitespace-pre-wrap break-words pr-6"
+  >
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight]}
+      
+    >
+      {message.content}
+    </ReactMarkdown>
+  </SelectableText>
+) : (
+  <p className="whitespace-pre-wrap break-words pr-6">{message.content}</p>
+)}
                 </div>
                 
                 <div className="text-xs text-muted-foreground mt-1 text-right">
@@ -224,18 +235,15 @@ export function ChatInterface({ messages, onAddMessage, conversationTitle }: Cha
   )
 }
 
-// Function to get response from Groq API
 async function getGroqResponse(userMessage: string, conversationHistory: Message[]): Promise<string> {
   try {
-    // Build conversation context from message history
     const messages = conversationHistory
-      .slice(-10) // Keep last 10 messages for context (adjust as needed)
+      .slice(-10)
       .map(msg => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content
       }))
 
-    // Add the current user message
     messages.push({
       role: 'user',
       content: userMessage
@@ -254,7 +262,8 @@ async function getGroqResponse(userMessage: string, conversationHistory: Message
     }
 
     const data = await response.json()
-    return data.content || 'Sorry, I received an empty response.'
+    return data.message || 'Sorry, I received an empty response.' // ✅ FIXED
+
   } catch (error) {
     console.error('Error calling Groq API:', error)
     throw error

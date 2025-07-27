@@ -112,44 +112,27 @@ export async function POST(request: NextRequest) {
       }))
     ]
 
-    // Adjust parameters based on query type
     const chatParams = {
       messages: apiMessages,
       model: "llama-3.3-70b-versatile" as const,
-      temperature: isCodeQuery ? 0.3 : 0.7, // Lower temperature for code-related queries
-      max_tokens: isCodeQuery ? 2048 : 1024, // More tokens for code examples
+      temperature: isCodeQuery ? 0.3 : 0.7,
+      max_tokens: isCodeQuery ? 2048 : 1024,
       top_p: 0.95,
-      stream: false as const, // Explicitly set as const to ensure TypeScript knows this is false
-      // Add stop sequences to prevent overly long responses
+      stream: false as const,
       stop: ["<|end_of_turn|>", "<|end|>"]
     }
 
     const chatCompletion = await groq.chat.completions.create(chatParams)
-    
-    // Type guard to ensure we have a ChatCompletion and not a Stream
+
     if ('choices' in chatCompletion && chatCompletion.choices) {
       let content = chatCompletion.choices[0]?.message?.content || ''
-      
-      // Process the response for better developer experience
+
+      // Process and clean response
       content = processResponse(content, isCodeQuery)
 
-      // Add usage statistics for monitoring
-      const usage = chatCompletion.usage
-
-      return NextResponse.json({ 
-        content,
-        metadata: {
-          model: chatParams.model,
-          isCodeQuery,
-          tokens: usage ? {
-            prompt: usage.prompt_tokens,
-            completion: usage.completion_tokens,
-            total: usage.total_tokens
-          } : null
-        }
-      })
+      // ✅ Send only human-readable content
+      return NextResponse.json({ message: content })
     } else {
-      // Fallback if for some reason we don't get the expected response structure
       return NextResponse.json({
         error: 'Unexpected response format from API',
         type: 'api_error'
@@ -158,33 +141,30 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error calling Groq API:', error)
-    
-    // Enhanced error handling
+
     if (error instanceof Error) {
-      // Handle rate limiting
       if (error.message.includes('rate limit')) {
         return NextResponse.json(
-          { 
+          {
             error: 'Rate limit exceeded. Please wait a moment before sending another message.',
             type: 'rate_limit'
           },
           { status: 429 }
         )
       }
-      
-      // Handle API key issues
+
       if (error.message.includes('auth') || error.message.includes('api key')) {
         return NextResponse.json(
-          { 
+          {
             error: 'API configuration error. Please check your setup.',
             type: 'auth_error'
           },
           { status: 401 }
         )
       }
-      
+
       return NextResponse.json(
-        { 
+        {
           error: `API error: ${error.message}`,
           type: 'api_error'
         },
@@ -193,7 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error. Please try again.',
         type: 'internal_error'
       },
@@ -202,33 +182,30 @@ export async function POST(request: NextRequest) {
   }
 }
 
+
 // Enhanced health check with system status
 export async function GET() {
   try {
-    // Test API connectivity with explicit non-streaming parameters
     const testCompletion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: 'test' }],
       model: "llama-3.3-70b-versatile",
       max_tokens: 10,
       temperature: 0.1,
-      stream: false as const // Explicitly set stream to false
+      stream: false as const
     })
 
-    // Type guard for the test completion as well
     if ('choices' in testCompletion && testCompletion.choices) {
       return NextResponse.json({ 
-        status: 'Chat API is running',
+        status: '✅ Chat API is operational',
         model: 'llama-3.3-70b-versatile',
-        timestamp: new Date().toISOString(),
-        connection: 'healthy'
+        timestamp: new Date().toISOString()
       })
     } else {
       return NextResponse.json(
         { 
-          status: 'Chat API has issues',
+          status: '⚠️ Chat API issue',
           error: 'Unexpected response format',
-          timestamp: new Date().toISOString(),
-          connection: 'unhealthy'
+          timestamp: new Date().toISOString()
         },
         { status: 503 }
       )
@@ -236,10 +213,9 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       { 
-        status: 'Chat API has issues',
+        status: '❌ Chat API error',
         error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
-        connection: 'unhealthy'
+        timestamp: new Date().toISOString()
       },
       { status: 503 }
     )

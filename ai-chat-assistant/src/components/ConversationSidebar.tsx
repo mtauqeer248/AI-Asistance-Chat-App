@@ -10,6 +10,10 @@ import {
   Clock
 } from 'lucide-react'
 import { Conversation } from '@/app/page'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
+import 'highlight.js/styles/github-dark.css'
 
 interface ConversationSidebarProps {
   conversations: Conversation[]
@@ -120,13 +124,40 @@ export function ConversationSidebar({
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
-                      <h3 className={`font-medium truncate text-sm ${
+                      <div className={`font-medium truncate text-sm ${
                         currentConversationId === conversation.id
                           ? 'text-primary'
                           : 'text-card-foreground'
                       }`}>
-                        {conversation.title}
-                      </h3>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeHighlight]}
+                          
+                          components={{
+                            p: ({ children }) => <span>{children}</span>,
+                            h1: ({ children }) => <span className="text-sm font-bold">{children}</span>,
+                            h2: ({ children }) => <span className="text-sm font-semibold">{children}</span>,
+                            h3: ({ children }) => <span className="text-sm font-medium">{children}</span>,
+                            h4: ({ children }) => <span className="text-xs font-medium">{children}</span>,
+                            h5: ({ children }) => <span className="text-xs font-medium">{children}</span>,
+                            h6: ({ children }) => <span className="text-xs font-medium">{children}</span>,
+                            code: ({ children }) => <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            a: ({ children, href }) => (
+                              <span className="text-primary hover:underline cursor-pointer" title={href}>
+                                {children}
+                              </span>
+                            ),
+                            ul: ({ children }) => <span>{children}</span>,
+                            ol: ({ children }) => <span>{children}</span>,
+                            li: ({ children }) => <span>{children} </span>,
+                            blockquote: ({ children }) => <span className="italic opacity-80">{children}</span>,
+                          }}
+                        >
+                          {conversation.title}
+                        </ReactMarkdown>
+                      </div>
                       
                       {conversation.messages.length > 0 && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
