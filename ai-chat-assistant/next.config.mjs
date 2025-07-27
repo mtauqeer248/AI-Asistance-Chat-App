@@ -1,4 +1,9 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  output: 'standalone', // or 'export' depending on your needs
+  experimental: {
+    serverComponentsExternalPackages: ['groq-sdk']
+  }
+}
 
-export default nextConfig;
+module.exports = nextConfig
