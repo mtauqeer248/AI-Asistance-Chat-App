@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DevAssist: a streaming AI coding assistant
 
-## Getting Started
+A chat assistant for developers, built with Next.js 14 (App Router) and TypeScript on Groq's low-latency inference. Replies stream in token by token. You can stop a reply partway, save useful answers as cards, and select any text in a reply to get a quick explanation.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Streaming responses.** Tokens show up as the model generates them. You can **Stop** a reply partway and **Regenerate** the last one.
+- **Conversation history.** Each chat gets a title automatically. You can search, rename and delete chats, and they're saved in the browser (localStorage).
+- **Saved cards.** Keep good answers by dragging a reply into the panel or clicking the bookmark icon. Cards can be reordered, copied and downloaded as `.md`.
+- **Explain selection.** Select text in a reply to stream a short explanation in a popover. You can then continue in the main chat.
+- **Rich markdown.** Replies render GFM tables and lists, and code gets syntax highlighting, a language label and a copy button.
+- **Export** any conversation as Markdown.
+- **Dark mode** that follows the system setting, with no flash on load. The layout is **responsive** and works down to phone width.
+
+## Architecture
+
+```
+src/
+├── app/
+│   ├── api/chat/route.ts     # Validates input → rate-limits → streams Groq tokens as text/plain
+│   ├── layout.tsx            # Fonts, theme bootstrap script
+│   └── page.tsx              # App shell: sidebar · chat · cards
+├── components/
+│   ├── chat/                 # ChatPanel, MessageItem, Composer, ExplainPopover
+│   ├── cards/CardsPanel.tsx
+│   ├── Sidebar.tsx
+│   └── ui/                   # Markdown, CopyButton, ThemeToggle
+├── hooks/
+│   ├── useChat.ts            # send / stop / regenerate lifecycle
+│   └── useAutoScroll.ts      # stick to bottom unless the user scrolls up
+├── store/
+│   ├── chat-reducer.ts       # Pure reducer: every state transition in one place
+│   └── ChatStore.tsx         # Context provider + debounced localStorage persistence
+└── lib/
+    ├── schema.ts             # zod request schema (shared limits)
+    ├── stream-client.ts      # fetch + ReadableStream reader
+    ├── server/               # server-only: Groq client, prompts, rate limiter
+    ├── types.ts
+    └── utils.ts
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Design decisions
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Decision | Why |
+| --- | --- |
+| **Plain-text stream** instead of SSE or a chat SDK | The client only needs tokens, so reading `response.body` needs no parsing library. `TextDecoder({ stream: true })` keeps multi-byte characters intact across chunk boundaries. |
+| **Cancellation end-to-end** | The Stop button aborts the `fetch`. That triggers the route's `ReadableStream.cancel()`, which aborts the upstream Groq request, so you don't pay for tokens nobody reads. |
+| **Server owns the system prompts** | The client can only send `user` and `assistant` roles (enforced by zod), so it can't inject its own system prompt. The `mode` field picks between prompts defined on the server. |
+| **Pure reducer for state** | All transitions (append token, finish, truncate for regenerate, reorder cards) are pure functions that are easy to unit test and reason about. |
+| **Debounced persistence** | Streaming can dispatch dozens of updates per second. localStorage is written at most every 400 ms. |
+| **Model set by an env var** | Groq retired `llama-3.1-8b-instant` in August 2026. With `GROQ_MODEL`, the next deprecation is a config change, not a code change. |
+| **Error mapping** | Upstream 401, 404, 429 and 5xx errors become clear, typed messages. API keys and stack traces never reach the client. |
+| **In-memory rate limiter** | 20 requests per minute per IP. On serverless each instance keeps its own count, so this is best-effort. Swap in Redis or Upstash behind the same function for a hard limit. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Getting started
 
-## Learn More
+```bash
+npm install
+cp .env.example .env.local   # add your GROQ_API_KEY
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open http://localhost:3000.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable | Required | Default |
+| --- | --- | --- |
+| `GROQ_API_KEY` | yes | none |
+| `GROQ_MODEL` | no | `openai/gpt-oss-20b` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API
 
-## Deploy on Vercel
+`POST /api/chat`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```json
+{ "mode": "chat", "messages": [{ "role": "user", "content": "Explain closures" }] }
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Success returns a `text/plain` stream of the reply. Errors return JSON: `{ "error": string, "type": "bad_request" | "rate_limit" | "config_error" | "model_not_found" | "upstream_error" }`.
+
+`GET /api/chat` is a health check. It reports the configured model and whether the key is set, without spending tokens.
+
+## Deploying to Vercel
+
+Import the repo, set `GROQ_API_KEY` (and optionally `GROQ_MODEL`) under Project → Settings → Environment Variables, and deploy.
+
+## Possible next steps
+
+- Store conversations in a database behind authentication, so they sync across devices
+- Unit tests for `chat-reducer.ts` and the route's error mapping
+- A shared, Redis-backed rate limiter
