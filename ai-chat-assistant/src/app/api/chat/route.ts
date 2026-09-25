@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 import type { ChatCompletion } from 'groq-sdk/resources/chat/completions'
 
+
+
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 })
@@ -114,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     const chatParams = {
       messages: apiMessages,
-      model: "llama-3.3-70b-versatile" as const,
+      model: "openai/gpt-oss-20b" as const,
       temperature: isCodeQuery ? 0.3 : 0.7,
       max_tokens: isCodeQuery ? 2048 : 1024,
       top_p: 0.95,
@@ -188,7 +190,7 @@ export async function GET() {
   try {
     const testCompletion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: 'test' }],
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-20b",
       max_tokens: 10,
       temperature: 0.1,
       stream: false as const
@@ -197,7 +199,7 @@ export async function GET() {
     if ('choices' in testCompletion && testCompletion.choices) {
       return NextResponse.json({ 
         status: '✅ Chat API is operational',
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-20b',
         timestamp: new Date().toISOString()
       })
     } else {

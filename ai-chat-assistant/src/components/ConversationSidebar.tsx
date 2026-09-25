@@ -13,6 +13,7 @@ import { Conversation } from '@/app/page'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
+// @ts-ignore — highlight.js ships the stylesheet but no TypeScript declaration for it.
 import 'highlight.js/styles/github-dark.css'
 
 interface ConversationSidebarProps {
