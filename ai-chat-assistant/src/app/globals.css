@@ -5,48 +5,112 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 93%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 90%;
+    --input: 220 13% 86%;
+    --ring: 243 75% 59%;
+    --radius: 0.75rem;
   }
 
+  .dark {
+    --background: 222 32% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 28% 10%;
+    --primary: 239 84% 70%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 222 20% 18%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 222 26% 9%;
+    --muted-foreground: 218 11% 65%;
+    --accent: 222 20% 16%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 18% 18%;
+    --input: 222 18% 24%;
+    --ring: 239 84% 70%;
+  }
 
-}
-
-@layer base {
   * {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
 }
 
-/* Custom scrollbar */
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
+@layer components {
+  .icon-btn {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+  .send-btn {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .avatar {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full;
+  }
+  .typing-dot {
+    @apply h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground;
+  }
 }
 
-.scrollbar-thin::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out;
 }
 
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full hover:bg-gray-400 dark:hover:bg-gray-500;
+@keyframes blink {
+  50% { opacity: 0; }
 }
+/* Blinking caret at the end of a streaming reply. */
+.streaming-cursor > :last-child::after {
+  content: '▍';
+  margin-left: 2px;
+  color: hsl(var(--primary));
+  animation: blink 1s steps(1) infinite;
+}
+
+/* ---------- Markdown ---------- */
+.markdown { @apply break-words; }
+.markdown > * + * { @apply mt-3; }
+.markdown h1 { @apply text-lg font-semibold; }
+.markdown h2 { @apply text-base font-semibold; }
+.markdown h3, .markdown h4 { @apply font-semibold; }
+.markdown ul { @apply list-disc space-y-1 pl-5; }
+.markdown ol { @apply list-decimal space-y-1 pl-5; }
+.markdown a { @apply text-primary underline underline-offset-2; }
+.markdown blockquote { @apply border-l-2 border-border pl-3 text-muted-foreground; }
+.markdown hr { @apply border-border; }
+.markdown table { @apply block w-full overflow-x-auto text-xs; border-collapse: collapse; }
+.markdown th, .markdown td { @apply border border-border px-2 py-1 text-left; }
+.markdown th { @apply bg-muted font-semibold; }
+.markdown :not(pre) > code {
+  @apply rounded bg-accent px-1.5 py-0.5 font-mono text-[0.85em];
+}
+
+.code-block { @apply overflow-hidden rounded-lg border border-border bg-[#0d1117]; }
+.code-block__bar {
+  @apply flex items-center justify-between bg-white/5 py-0.5 pl-3 pr-1 font-mono text-[11px] text-slate-400;
+}
+.code-block__bar .icon-btn { @apply h-7 w-7 text-slate-400 hover:bg-white/10 hover:text-white; }
+.code-block pre { @apply overflow-x-auto p-3 text-[12.5px] leading-relaxed text-slate-100; }
+.code-block pre code.hljs { @apply bg-transparent p-0; }
+
+/* ---------- Scrollbar ---------- */
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+.scrollbar-thin::-webkit-scrollbar { width: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }

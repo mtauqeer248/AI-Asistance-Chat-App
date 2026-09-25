@@ -1,225 +1,139 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-// app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
-import type { ChatCompletion } from 'groq-sdk/resources/chat/completions'
+import { chatRequestSchema } from '@/lib/schema'
+import { getGroq, MissingApiKeyError, MODEL } from '@/lib/server/groq'
+import { systemPromptFor } from '@/lib/server/prompts'
+import { rateLimit } from '@/lib/server/rate-limit'
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
+type ErrorType = 'bad_request' | 'rate_limit' | 'config_error' | 'model_not_found' | 'upstream_error'
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-})
+function errorResponse(error: string, type: ErrorType, status: number, headers?: HeadersInit) {
+  return NextResponse.json({ error, type }, { status, headers })
+}
 
-const SYSTEM_PROMPT = `You are an expert Software Engineer AI Assistant specialized in helping developers with their daily coding tasks. Your expertise includes:
+/**
+ * POST /api/chat
+ * Body: { mode?: 'chat' | 'explain', messages: { role, content }[] }
+ * Returns: a text/plain stream of the assistant's reply, token by token.
+ */
+export async function POST(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'local'
+  const limit = rateLimit(ip)
+  if (!limit.ok) {
+    return errorResponse(
+      `Too many requests. Try again in ${limit.retryAfter}s.`,
+      'rate_limit',
+      429,
+      { 'Retry-After': String(limit.retryAfter) },
+    )
+  }
 
-## CORE EXPERTISE:
-- Full-stack development (Frontend, Backend, DevOps)
-- Code review, debugging, and optimization
-- Architecture design and system design patterns
-- Database design and query optimization
-- API design and integration
-- Testing strategies (unit, integration, e2e)
-- Performance optimization and scalability
-- Security best practices
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return errorResponse('Request body must be valid JSON.', 'bad_request', 400)
+  }
 
-## PROGRAMMING LANGUAGES & FRAMEWORKS:
-JavaScript/TypeScript, React, Next.js, Node.js, Python, Java, C#, Go, Rust, PHP, Swift, Kotlin, Vue.js, Angular, Express, Django, Flask, Spring Boot, .NET, Docker, Kubernetes, AWS, GCP, Azure
+  const parsed = chatRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return errorResponse(parsed.error.issues[0]?.message ?? 'Invalid request.', 'bad_request', 400)
+  }
+  const { mode, messages } = parsed.data
 
-## RESPONSE GUIDELINES:
-1. **Be Practical**: Provide actionable, production-ready solutions
-2. **Code Examples**: Always include relevant code snippets with proper syntax highlighting
-3. **Best Practices**: Mention industry standards and conventions
-4. **Performance Focus**: Consider scalability and optimization
-5. **Security Aware**: Point out potential security issues
-6. **Explain Trade-offs**: Discuss pros/cons of different approaches
-7. **Modern Stack**: Prefer current technologies and patterns
-8. **Error Handling**: Include proper error handling in examples
+  let completion: Awaited<ReturnType<typeof startCompletion>>
+  try {
+    completion = await startCompletion(mode, messages)
+  } catch (error) {
+    return mapUpstreamError(error)
+  }
 
-## CODE FORMAT:
-- Use proper markdown code blocks with language specification
-- Add comments explaining complex logic
-- Follow naming conventions for the specific language
-- Include import statements when necessary
-- Show both implementation and usage examples
+  const encoder = new TextEncoder()
+  let cancelled = false
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const chunk of completion) {
+          const token = chunk.choices[0]?.delta?.content
+          if (token) controller.enqueue(encoder.encode(token))
+        }
+        controller.close()
+      } catch (error) {
+        // Client disconnected (Stop button / closed tab) — expected, not an error.
+        if (cancelled) {
+          controller.close()
+          return
+        }
+        console.error('[api/chat] stream failed:', error)
+        controller.error(error)
+      }
+    },
+    // Fires when the browser aborts the fetch. Abort upstream too so we stop paying for tokens.
+    cancel() {
+      cancelled = true
+      completion.controller.abort()
+    },
+  })
 
-## DAILY DEVELOPER HELP:
-- Quick debugging sessions
-- Code refactoring suggestions
-- Architecture decision guidance
-- Performance bottleneck identification
-- Third-party library recommendations
-- Deployment and CI/CD guidance
-- Code organization and project structure
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Model': MODEL,
+    },
+  })
+}
 
-Be concise but thorough. Focus on solving real-world development challenges efficiently.`
-
-// Helper function to detect code-related queries
-function isCodeRelated(message: string): boolean {
-  const codeKeywords = [
-    'code', 'function', 'class', 'variable', 'method', 'api', 'database', 
-    'bug', 'error', 'debug', 'optimize', 'refactor', 'implement', 'algorithm',
-    'framework', 'library', 'package', 'install', 'deploy', 'test', 'git',
-    'javascript', 'typescript', 'python', 'java', 'react', 'node', 'sql',
-    'html', 'css', 'json', 'xml', 'async', 'await', 'promise', 'callback'
-  ]
-  
-  return codeKeywords.some(keyword => 
-    message.toLowerCase().includes(keyword.toLowerCase())
+function startCompletion(
+  mode: 'chat' | 'explain',
+  messages: { role: 'user' | 'assistant'; content: string }[],
+) {
+  // Note: we deliberately don't forward `request.signal`. In Next 14 it fires as soon as
+  // the request body is consumed, which would kill the stream. Cancellation is handled
+  // by the ReadableStream's cancel() callback instead.
+  return getGroq().chat.completions.create(
+    {
+      model: MODEL,
+      messages: [{ role: 'system', content: systemPromptFor(mode) }, ...messages],
+      stream: true,
+      temperature: mode === 'explain' ? 0.3 : 0.5,
+      // gpt-oss is a reasoning model: reasoning tokens count toward this budget.
+      max_completion_tokens: mode === 'explain' ? 1024 : 4096,
+      reasoning_effort: 'low',
+      include_reasoning: false,
+    },
   )
 }
 
-// Enhanced response processing
-function processResponse(content: string, isCodeQuery: boolean): string {
-  // Add helpful formatting and structure
-  let processedContent = content
-
-  // If it's a code-related query, ensure proper structure
-  if (isCodeQuery) {
-    // Add simple headings for better readability
-    processedContent = processedContent
-      .replace(/^(Solution:|Answer:|Here's)/gm, '## $1')
-      .replace(/^(Note:|Important:|Warning:)/gm, '### $1')
-      .replace(/^(Tip:|Pro tip:|Best practice:)/gm, '### $1')
-      .replace(/^(Example:|Code example:)/gm, '### $1')
+function mapUpstreamError(error: unknown) {
+  if (error instanceof MissingApiKeyError) {
+    return errorResponse('Server is missing GROQ_API_KEY.', 'config_error', 500)
   }
-
-  return processedContent
+  if (error instanceof Groq.APIError) {
+    console.error('[api/chat] Groq error:', error.status, error.message)
+    if (error.status === 429) {
+      return errorResponse('The AI provider is rate limiting us. Please wait a moment.', 'rate_limit', 429)
+    }
+    if (error.status === 401 || error.status === 403) {
+      return errorResponse('Invalid GROQ_API_KEY.', 'config_error', 500)
+    }
+    if (error.status === 404) {
+      return errorResponse(`Model "${MODEL}" is unavailable. Set GROQ_MODEL to a current model.`, 'model_not_found', 502)
+    }
+    return errorResponse('The AI provider returned an error.', 'upstream_error', 502)
+  }
+  console.error('[api/chat] unexpected error:', error)
+  return errorResponse('Something went wrong. Please try again.', 'upstream_error', 500)
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const { messages } = await request.json()
-
-    if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json(
-        { error: 'Messages array is required' },
-        { status: 400 }
-      )
-    }
-
-    // Get the last user message to analyze
-    const lastUserMessage = messages[messages.length - 1]?.content || ''
-    const isCodeQuery = isCodeRelated(lastUserMessage)
-
-    // Prepare messages with system prompt
-    const apiMessages = [
-      {
-        role: 'system',
-        content: SYSTEM_PROMPT
-      },
-      ...messages.map((msg: any) => ({
-        role: msg.role,
-        content: msg.content
-      }))
-    ]
-
-    const chatParams = {
-      messages: apiMessages,
-      model: "openai/gpt-oss-20b" as const,
-      temperature: isCodeQuery ? 0.3 : 0.7,
-      max_tokens: isCodeQuery ? 2048 : 1024,
-      top_p: 0.95,
-      stream: false as const,
-      stop: ["<|end_of_turn|>", "<|end|>"]
-    }
-
-    const chatCompletion = await groq.chat.completions.create(chatParams)
-
-    if ('choices' in chatCompletion && chatCompletion.choices) {
-      let content = chatCompletion.choices[0]?.message?.content || ''
-
-      // Process and clean response
-      content = processResponse(content, isCodeQuery)
-
-      // ✅ Send only human-readable content
-      return NextResponse.json({ message: content })
-    } else {
-      return NextResponse.json({
-        error: 'Unexpected response format from API',
-        type: 'api_error'
-      }, { status: 500 })
-    }
-
-  } catch (error) {
-    console.error('Error calling Groq API:', error)
-
-    if (error instanceof Error) {
-      if (error.message.includes('rate limit')) {
-        return NextResponse.json(
-          {
-            error: 'Rate limit exceeded. Please wait a moment before sending another message.',
-            type: 'rate_limit'
-          },
-          { status: 429 }
-        )
-      }
-
-      if (error.message.includes('auth') || error.message.includes('api key')) {
-        return NextResponse.json(
-          {
-            error: 'API configuration error. Please check your setup.',
-            type: 'auth_error'
-          },
-          { status: 401 }
-        )
-      }
-
-      return NextResponse.json(
-        {
-          error: `API error: ${error.message}`,
-          type: 'api_error'
-        },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json(
-      {
-        error: 'Internal server error. Please try again.',
-        type: 'internal_error'
-      },
-      { status: 500 }
-    )
-  }
-}
-
-
-// Enhanced health check with system status
+/** Cheap health check — reports config without spending tokens on a completion. */
 export async function GET() {
-  try {
-    const testCompletion = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: 'test' }],
-      model: "openai/gpt-oss-20b",
-      max_tokens: 10,
-      temperature: 0.1,
-      stream: false as const
-    })
-
-    if ('choices' in testCompletion && testCompletion.choices) {
-      return NextResponse.json({ 
-        status: '✅ Chat API is operational',
-        model: 'openai/gpt-oss-20b',
-        timestamp: new Date().toISOString()
-      })
-    } else {
-      return NextResponse.json(
-        { 
-          status: '⚠️ Chat API issue',
-          error: 'Unexpected response format',
-          timestamp: new Date().toISOString()
-        },
-        { status: 503 }
-      )
-    }
-  } catch (error) {
-    return NextResponse.json(
-      { 
-        status: '❌ Chat API error',
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      },
-      { status: 503 }
-    )
-  }
+  return NextResponse.json({
+    status: process.env.GROQ_API_KEY ? 'ok' : 'missing_api_key',
+    model: MODEL,
+    timestamp: new Date().toISOString(),
+  })
 }
